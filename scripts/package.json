@@ -1,0 +1,17 @@
+{
+  "name": "reserhab-scripts",
+  "version": "1.0.0",
+  "description": "Scripts de utilidad para ReserHab",
+  "main": "setup-admin.ts",
+  "scripts": {
+    "setup-admin": "ts-node setup-admin.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1",
+    "@types/node": "^18.0.0"
+  }
+}

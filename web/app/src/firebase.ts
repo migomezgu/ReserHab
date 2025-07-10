@@ -4,12 +4,12 @@ import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore'
 
 // Configuración de Firebase - Reemplaza con tus valores reales
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyBo-v8vClhzOXFa_E_krZDdVOfXxkdG7Fc",
   authDomain: "reserhab.firebaseapp.com",
   projectId: "reserhab",
-  storageBucket: "reserhab.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  storageBucket: "reserhab.firebasestorage.app",
+  messagingSenderId: "867773059792",
+  appId: "1:867773059792:web:adfca1cd4630a7fee504d5"
 };
 
 // Inicializar Firebase

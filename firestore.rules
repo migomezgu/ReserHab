@@ -1,18 +1,44 @@
-rules_version='2'
-
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2025, 8, 9);
+    function isStaff(hotelId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid))
+          .data.role in ['admin', 'reception'];
+    }
+    
+    function isAdmin(hotelId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid))
+          .data.role == 'admin';
+    }
+
+    match /hotels/{hotelId} {
+      // Reglas para reservaciones
+      match /reservations/{reservationId} {
+        // Cualquiera puede crear una reservación no confirmada
+        allow create: if request.auth == null
+          && request.resource.data.status == 'unconfirmed';
+        
+        // Solo personal puede leer/escribir reservaciones
+        allow read, write: if isStaff(hotelId);
+      }
+
+      // Reglas para usuarios
+      match /users/{userId} {
+        // Los administradores pueden leer todos los usuarios
+        // Los usuarios pueden leer su propia información
+        allow read: if isAdmin(hotelId) || request.auth.uid == userId;
+        
+        // Solo administradores pueden crear o actualizar usuarios
+        allow write: if isAdmin(hotelId);
+      }
+
+      // Reglas para otras colecciones del hotel
+      match /{document=**} {
+        // Solo personal puede acceder a otros documentos del hotel
+        allow read, write: if isStaff(hotelId);
+      }
     }
   }
 }
