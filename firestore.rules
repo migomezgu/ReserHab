@@ -1,44 +1,110 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Verifica si un usuario pertenece a un hotel con un rol específico
+    function belongsToHotel(hotelId, role) {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)) &&
+        (role == null || get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)).data.role == role);
+    }
+    
     function isStaff(hotelId) {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid))
-          .data.role in ['admin', 'reception'];
+      return belongsToHotel(hotelId, 'admin') || belongsToHotel(hotelId, 'reception');
     }
     
     function isAdmin(hotelId) {
-      return request.auth != null &&
-        get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid))
-          .data.role == 'admin';
+      return belongsToHotel(hotelId, 'admin');
+    }
+    
+    // Verifica si una reserva existe y no está cancelada
+    function isValidReservation(hotelId, resId) {
+      let res = get(/databases/$(database)/documents/hotels/$(hotelId)/reservations/$(resId));
+      return res.exists && res.data.status != 'cancelled' && res.data.status != 'check-out';
     }
 
+    // Reglas para la colección de hoteles
     match /hotels/{hotelId} {
+      // Cualquiera puede ver la información básica del hotel
+      allow read: if true;
+      
+      // Solo administradores pueden crear/actualizar hoteles
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+        
+      allow update, delete: if isAdmin(hotelId);
+
+      // Reglas para la subcolección de huéspedes
+      match /reservations/{resId}/guests/{guestId} {
+        // Cualquiera puede crear huéspedes (para pre-checkin público)
+        allow create: if request.auth == null && isValidReservation(hotelId, resId);
+        
+        // Solo personal autorizado puede leer/actualizar/eliminar huéspedes
+        allow read, update, delete: if isStaff(hotelId);
+      }
+      
       // Reglas para reservaciones
       match /reservations/{reservationId} {
-        // Cualquiera puede crear una reservación no confirmada
-        allow create: if request.auth == null
-          && request.resource.data.status == 'unconfirmed';
+        // Cualquiera puede crear reservas con estado 'unconfirmed'
+        allow create: if request.auth == null && 
+          request.resource.data.status == 'unconfirmed';
+          
+        // Usuarios autenticados pueden ver sus propias reservas
+        allow read: if request.auth != null && 
+          (belongsToHotel(hotelId) || resource.data.userId == request.auth.uid);
+          
+        // Personal puede ver/actualizar todas las reservas
+        allow read, update: if isStaff(hotelId);
         
-        // Solo personal puede leer/escribir reservaciones
-        allow read, write: if isStaff(hotelId);
+        // Permitir actualización de occupancy para pre-checkin
+        allow update: if request.auth == null &&
+          request.resource.data.occupancy == 'pre-arrival' &&
+          resource.data.status != 'cancelled' &&
+          resource.data.status != 'check-out';
       }
 
-      // Reglas para usuarios
+      // Reglas para usuarios del hotel
       match /users/{userId} {
-        // Los administradores pueden leer todos los usuarios
-        // Los usuarios pueden leer su propia información
-        allow read: if isAdmin(hotelId) || request.auth.uid == userId;
+        // Usuarios pueden leer su propia información
+        // Administradores pueden leer información de cualquier usuario
+        allow read: if request.auth.uid == userId || isAdmin(hotelId);
         
         // Solo administradores pueden crear o actualizar usuarios
-        allow write: if isAdmin(hotelId);
+        allow create: if isAdmin(hotelId) || 
+          (request.auth.uid == userId && request.resource.data.role == 'guest');
+          
+        allow update, delete: if isAdmin(hotelId) || request.auth.uid == userId;
+      }
+
+      // Reglas para habitaciones
+      match /rooms/{roomId} {
+        // Cualquiera puede ver las habitaciones disponibles
+        allow read: if true;
+        
+        // Solo personal puede gestionar habitaciones
+        allow write: if isStaff(hotelId);
       }
 
       // Reglas para otras colecciones del hotel
       match /{document=**} {
-        // Solo personal puede acceder a otros documentos del hotel
+        // Por defecto, solo personal puede acceder a otros documentos
         allow read, write: if isStaff(hotelId);
       }
     }
+    
+    // Colección global de perfiles de usuario
+    match /user_profiles/{userId} {
+      // Los usuarios pueden leer/editar su propio perfil
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Los administradores pueden ver perfiles
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/hotels/{hotelId=**}/users/$(request.auth.uid)[@request.time])
+        && get(/databases/$(database)/documents/hotels/$(hotelId)/users/$(request.auth.uid)).data.role == 'admin';
+    }
   }
 }
+
+    // checklist entrega / recepción
+    match /hotels/{hotelId}/reservations/{resId}/deliveries/{itemId} {
+      allow read, write: if belongsToHotel(hotelId);
+    }
